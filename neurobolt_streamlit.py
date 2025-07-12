@@ -1,83 +1,78 @@
 import streamlit as st
 import sqlite3
 from datetime import date
-import pandas as pd
 
-# ======================
-# Database Setup
-# ======================
+# Database setup
 conn = sqlite3.connect("aiml_tracker.db", check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS progress (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
         date TEXT,
         question_name TEXT,
         topic TEXT,
-        status TEXT,
-        remarks TEXT,
-        mock_test INTEGER,
-        revision_done INTEGER
+        difficulty TEXT,
+        status TEXT
     )
 ''')
 conn.commit()
 
-# ======================
-# Database Functions
-# ======================
-def insert_entry(date_val, question, topic, status, remarks, mock, revision):
-    cursor.execute('''
-        INSERT INTO progress (date, question_name, topic, status, remarks, mock_test, revision_done)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (date_val, question, topic, status, remarks, mock, revision))
+# Functions
+def add_entry(username, date, question_name, topic, difficulty, status):
+    cursor.execute("INSERT INTO progress (username, date, question_name, topic, difficulty, status) VALUES (?, ?, ?, ?, ?, ?)",
+                   (username, date, question_name, topic, difficulty, status))
     conn.commit()
 
-def fetch_entries():
-    cursor.execute("SELECT date, question_name, topic, status, remarks, mock_test, revision_done FROM progress ORDER BY id DESC")
+def fetch_entries(username):
+    if username.lower() == "aryan":
+        cursor.execute("SELECT * FROM progress ORDER BY date DESC")
+    else:
+        cursor.execute("SELECT * FROM progress WHERE username = ? ORDER BY date DESC", (username,))
     return cursor.fetchall()
 
-# ======================
-# Streamlit GUI
-# ======================
-st.set_page_config("NeuroBolt Tracker", layout="centered", page_icon="🧠")
-st.markdown("<h1 style='text-align:center; color:#2d3436;'>🧠 NeuroBolt Coding Tracker</h1>", unsafe_allow_html=True)
-st.markdown("<hr>", unsafe_allow_html=True)
+# Streamlit UI
+st.title("NeuroBolt AIML Progress Tracker")
 
-# === Form ===
-with st.form("entry_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        date_val = st.date_input("📅 Date", date.today())
-        question = st.text_input("📝 Question Name")
-        topic = st.text_input("📚 Topic")
-    with col2:
-        status = st.selectbox("⏳ Status", ["✅ Completed", "⏳ In Progress", "❌ Not Done"])
-        remarks = st.text_area("🗒️ Remarks", height=80)
-        mock = st.checkbox("✅ Mock Test Done")
-        revision = st.checkbox("🔁 Revision Done")
-
-    submitted = st.form_submit_button("💾 Save Entry")
-
-    if submitted:
-        if not question or not topic:
-            st.warning("⚠️ Question Name and Topic are required.")
+# --- Login Page ---
+if 'username' not in st.session_state:
+    st.subheader("🔐 Login")
+    username_input = st.text_input("Enter your username")
+    if st.button("Login"):
+        if username_input:
+            st.session_state.username = username_input
+            st.success(f"Welcome {username_input}!")
+            st.experimental_rerun()
         else:
-            insert_entry(str(date_val), question, topic, status, remarks, int(mock), int(revision))
-            st.success("✅ Progress saved successfully!")
-
-# === Table ===
-st.markdown("### 📊 Progress Table")
-records = fetch_entries()
-
-if records:
-    df = pd.DataFrame(records, columns=["Date", "Question", "Topic", "Status", "Remarks", "Mock", "Revision"])
-    df["Mock"] = df["Mock"].map({1: "Yes", 0: "No"})
-    df["Revision"] = df["Revision"].map({1: "Yes", 0: "No"})
-    st.dataframe(df, use_container_width=True)
+            st.warning("Please enter a username to continue.")
 else:
-    st.info("🗃️ No records found. Add your first entry above.")
+    st.sidebar.success(f"Logged in as: {st.session_state.username}")
+    username = st.session_state.username
 
-# === Footer ===
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown("<div style='text-align:center; color:gray;'>🧠 Built with ❤️ by Aryan — NeuroBolt Tracker</div>", unsafe_allow_html=True)
+    menu = st.sidebar.selectbox("Menu", ["➕ Add Entry", "📋 View Entries", "🚪 Logout"])
+
+    if menu == "➕ Add Entry":
+        st.subheader("Add Today's Progress")
+
+        qname = st.text_input("Question Name")
+        topic = st.text_input("Topic")
+        difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"])
+        status = st.selectbox("Status", ["Done", "Pending", "Revised"])
+        submit = st.button("Submit Entry")
+
+        if submit:
+            today = date.today().strftime("%Y-%m-%d")
+            add_entry(username, today, qname, topic, difficulty, status)
+            st.success("Entry added successfully!")
+
+    elif menu == "📋 View Entries":
+        st.subheader("Your Progress Entries" if username.lower() != "aryan" else "All User Progress Entries")
+        entries = fetch_entries(username)
+        if entries:
+            st.dataframe(entries, use_container_width=True)
+        else:
+            st.info("No entries found.")
+
+    elif menu == "🚪 Logout":
+        del st.session_state.username
+        st.experimental_rerun()
